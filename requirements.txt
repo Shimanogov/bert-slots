@@ -4,3 +4,4 @@ scikit-image~=0.20.0
 matplotlib~=3.7.1
 torch~=2.0.0
 wandb~=0.15.2
+torchvision~=0.15.2

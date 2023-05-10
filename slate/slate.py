@@ -29,6 +29,40 @@ class SLATE(nn.Module):
 
         self.out = linear(args.d_model, args.vocab_size, bias=False)
 
+    def reconstruct_slots(self, slots):
+
+        B, C, H, W = slots.shape[0], 3, 64, 64
+        gen_len = (W // 4) ** 2
+
+        z_logits = F.log_softmax(self.dvae.encoder(torch.zeros((B, C, H, W), device=slots.device)), dim=1)
+        _, _, H_enc, W_enc = z_logits.size()
+
+        # hard z
+        z_hard = torch.argmax(z_logits, axis=1)
+
+        slots = self.slot_proj(slots)
+
+        # generate image tokens auto-regressively
+        z_gen = z_hard.new_zeros(0)
+        z_transformer_input = z_hard.new_zeros(B, 1, self.vocab_size + 1)
+        z_transformer_input[..., 0] = 1.0
+        for t in range(gen_len):
+            decoder_output = self.tf_dec(
+                self.positional_encoder(self.dictionary(z_transformer_input)),
+                slots
+            )
+            z_next = F.one_hot(self.out(decoder_output)[:, -1:].argmax(dim=-1), self.vocab_size)
+            z_gen = torch.cat((z_gen, z_next), dim=1)
+            z_transformer_input = torch.cat([
+                z_transformer_input,
+                torch.cat([torch.zeros_like(z_next[:, :, :1]), z_next], dim=-1)
+            ], dim=1)
+
+        z_gen = z_gen.transpose(1, 2).float().reshape(B, -1, H_enc, W_enc)
+        recon_transformer = self.dvae.decoder(z_gen)
+
+        return recon_transformer.clamp(0., 1.)
+
     def forward(self, image, tau, hard):
         """
         image: batch_size x img_channels x H x W

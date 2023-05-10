@@ -1,6 +1,8 @@
 import torch
+import wandb
 from torch import nn
 from dataclasses import dataclass
+import torchvision.utils as vutils
 
 
 def get_time_emb(dim, time):
@@ -187,5 +189,20 @@ class SlotBert(nn.Module):
         new_slots = new_tokens[:, -1, :-2]
         old_slots = old_tokens[:, -1, :-2]
         losses['mse slots'] = torch.mean((new_slots - old_slots) ** 2)
+        new_slots_deemb = new_slots - self.modality_mask_emb(torch.ones(new_slots.shape[:-1],
+                                                                        dtype=torch.long,
+                                                                        device=self.device))
+        new_slots_deemb = new_slots_deemb - self.time_emb.to(self.device).unsqueeze(-2)[-1:]
+        old_slots_deemb = old_slots - self.modality_mask_emb(torch.ones(old_slots.shape[:-1],
+                                                                        dtype=torch.long,
+                                                                        device=self.device))
+        old_slots_deemb = old_slots_deemb - self.time_emb.to(self.device).unsqueeze(-2)[-1:]
+        reconstruct = self.slate.reconstruct_slots(new_slots_deemb)
+        reconstruct_old = self.slate.reconstruct_slots(old_slots_deemb)
+        losses['mse images'] = torch.mean((reconstruct - reconstruct_old) ** 2)
+        reconstruct = torch.cat([reconstruct[:32], reconstruct_old[:32]], dim=0)
+        grid = vutils.make_grid(reconstruct, nrow=2, pad_value=0.2)[:, 2:-2, 2:-2]
+        losses['visualisation'] = wandb.Image(grid)
+        # TODO: add logging of ground truth
 
         return losses
