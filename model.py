@@ -220,8 +220,8 @@ class SlotBert(nn.Module):
         losses['mse images slate-bert'] = torch.mean((reconstruct - reconstruct_old) ** 2)
         losses['mse images gt-slate'] = torch.mean((obses[:, -1] - reconstruct_old) ** 2)
         losses['mse images gt-bert'] = torch.mean((reconstruct - obses[:, -1]) ** 2)
-        reconstruct = torch.cat([obses[:32, -1], reconstruct[:32], reconstruct_old[:32]], dim=0)
-        grid = vutils.make_grid(reconstruct, nrow=32, pad_value=0.2)[:, 2:-2, 2:-2]
+        reconstruct = torch.cat([obses[:16, -1], reconstruct[:16], reconstruct_old[:16]], dim=0)
+        grid = vutils.make_grid(reconstruct, nrow=16, pad_value=0.2)[:, 2:-2, 2:-2]
         losses['visualisation'] = wandb.Image(grid)
         # TODO: add logging of ground truth
 
