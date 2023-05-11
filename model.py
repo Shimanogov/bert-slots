@@ -1,7 +1,6 @@
 import torch
 import wandb
 from torch import nn
-from dataclasses import dataclass
 import torchvision.utils as vutils
 
 
@@ -30,9 +29,9 @@ class SlotBert(nn.Module):
         self.time_emb = get_time_emb(slate.slot_size, time)
         bert_layer = nn.TransformerEncoderLayer(slate.slot_size, n_heads, dim_feedforward, batch_first=True)
         self.bert = nn.TransformerEncoder(bert_layer, num_layers)
-        self.act_ff = nn.Sequential(nn.Linear(slate.slot_size, slate.slot_size),
+        self.act_ff = nn.Sequential(nn.Linear(slate.slot_size, slate.slot_size*2),
                                     nn.GELU(),
-                                    nn.Linear(slate.slot_size, num_actions),
+                                    nn.Linear(slate.slot_size*2, num_actions),
                                     )
         self.act_loss = torch.nn.CrossEntropyLoss()
 
@@ -40,13 +39,16 @@ class SlotBert(nn.Module):
     def device(self):
         return next(self.parameters()).device
 
-    def embed_sep(self, obses, actions, rew):
+    def embed_sep(self, obses, actions, rew, return_add=False):
         target_sizes = list(obses.shape)[:2]
         obses = torch.flatten(obses, 0, 1)
         recon, ce, mse, attns, obses = self.slate(obses)
         if self.detach:
             obses = obses.detach()
         obses_ret = torch.unflatten(obses, 0, target_sizes)
+        if return_add:
+            return obses_ret, self.action_emb(actions), self.rew_emb(rew.unsqueeze(-1)), mse, ce,\
+                   torch.unflatten(recon, 0, target_sizes), torch.unflatten(attns, 0, target_sizes)
         return obses_ret, self.action_emb(actions), self.rew_emb(rew.unsqueeze(-1)), mse, ce
 
     def mask_sep(self, obses, actions, rew):
@@ -97,14 +99,12 @@ class SlotBert(nn.Module):
     def forward(self, obses, actions, rewards):
         t_obses, t_actions, t_rewards, mse, ce = self.embed_sep(obses, actions, rewards)
         (m_obses, m_actions, m_rewards), (bm_o, bm_a, bm_r) = self.mask_sep(t_obses, t_actions, t_rewards)
-        # tokens = self.sep_to_seq(t_obses, t_actions, t_rewards)
         masked_tokens = self.sep_to_seq(m_obses, m_actions, m_rewards)
         masks = 1 - self.concat_all(bm_o, bm_a, bm_r)  # mask = 0 should be included in loss
         new_tokens = self.pass_to_bert(masked_tokens)
         bert_mse = torch.mean((new_tokens - masked_tokens) ** 2 * masks.unsqueeze(-1))
-        if self.detach:
-            new_tokens = new_tokens.detach()
-
+        # if self.detach:
+        #    new_tokens = new_tokens.detach()
         # TODO: check loss is correct
         new_ttokens = new_tokens[:, self.slate.num_slots::self.slate.num_slots + 2]
         actions_time = self.time_emb.unsqueeze(0).to(self.device)
@@ -130,7 +130,7 @@ class SlotBert(nn.Module):
         meaningful = torch.max(torch.flatten(meaningful, 1), 1).values
         meaningful = torch.eq(meaningful, torch.zeros_like(meaningful))
 
-        t_obses, t_actions, t_rewards, _, _ = self.embed_sep(obses, actions, rewards)
+        t_obses, t_actions, t_rewards, _, _,  = self.embed_sep(obses, actions, rewards)
         mask_obses = torch.ones(t_obses.shape[:-1], device=self.device).long()
         mask_rew = torch.zeros(t_rewards.shape[:-1], device=self.device).long()
         mask_actions = torch.ones(t_actions.shape[:-1], device=self.device).long()
@@ -186,7 +186,7 @@ class SlotBert(nn.Module):
         # we should not mask actions
         # we should mask last obs
         losses = {}
-        t_obses, t_actions, t_rewards, _, _ = self.embed_sep(obses, actions, rewards)
+        t_obses, t_actions, t_rewards, _, _, recon, attns = self.embed_sep(obses, actions, rewards, return_add=True)
         mask_obses = torch.ones(t_obses.shape[:-1], device=self.device).long()
         mask_rew = torch.zeros(t_rewards.shape[:-1], device=self.device).long()
         mask_actions = torch.ones(t_actions.shape[:-1], device=self.device).long()
@@ -220,9 +220,10 @@ class SlotBert(nn.Module):
         losses['mse images slate-bert'] = torch.mean((reconstruct - reconstruct_old) ** 2)
         losses['mse images gt-slate'] = torch.mean((obses[:, -1] - reconstruct_old) ** 2)
         losses['mse images gt-bert'] = torch.mean((reconstruct - obses[:, -1]) ** 2)
-        reconstruct = torch.cat([obses[:16, -1], reconstruct[:16], reconstruct_old[:16]], dim=0)
+        reconstruct = torch.cat([obses[:16, -1], recon[:16, -1], reconstruct[:16], reconstruct_old[:16]], dim=0)
         grid = vutils.make_grid(reconstruct, nrow=16, pad_value=0.2)[:, 2:-2, 2:-2]
+        attns_grid = vutils.make_grid(torch.flatten(attns[:16, -1], 0, 1),  nrow=16, pad_value=0.2)[:, 2:-2, 2:-2]
         losses['visualisation'] = wandb.Image(grid)
-        # TODO: add logging of ground truth
+        losses['attns'] = wandb.Image(attns_grid)
 
         return losses
