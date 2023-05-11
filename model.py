@@ -109,7 +109,7 @@ class SlotBert(nn.Module):
         actions_time = self.time_emb.unsqueeze(0).to(self.device)
         mod_actions = self.modality_mask_emb(torch.ones(new_ttokens.shape[:-1],
                                                         dtype=torch.long, device=self.device) * 2)
-        new_ttokens = new_tokens - actions_time - mod_actions
+        new_ttokens = new_ttokens - actions_time - mod_actions
         new_actions = self.act_ff(new_ttokens)
         loss = self.act_loss(new_actions.flatten(0, 1), actions.flatten(0, 1))
         # END OF TD
@@ -146,7 +146,7 @@ class SlotBert(nn.Module):
         actions_time = self.time_emb.unsqueeze(0).to(self.device)
         mod_actions = self.modality_mask_emb(torch.ones(new_ttokens.shape[:-1],
                                                         dtype=torch.long, device=self.device) * 2)
-        new_ttokens = new_tokens - actions_time - mod_actions
+        new_ttokens = new_ttokens - actions_time - mod_actions
         old_ttokens = masked_tokens[:, self.slate.num_slots::self.slate.num_slots + 2]
         old_ttokens = old_ttokens - actions_time - mod_actions
         new_actions = self.act_ff(new_ttokens)
