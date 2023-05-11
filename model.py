@@ -217,7 +217,9 @@ class SlotBert(nn.Module):
         old_slots_deemb = old_slots_deemb - self.time_emb.to(self.device).unsqueeze(-2)[-1:]
         reconstruct = self.slate.reconstruct_slots(new_slots_deemb)
         reconstruct_old = self.slate.reconstruct_slots(old_slots_deemb)
-        losses['mse images'] = torch.mean((reconstruct - reconstruct_old) ** 2)
+        losses['mse images slate-bert'] = torch.mean((reconstruct - reconstruct_old) ** 2)
+        losses['mse images gt-slate'] = torch.mean((obses[:, -1] - reconstruct_old) ** 2)
+        losses['mse images gt-bert'] = torch.mean((reconstruct - obses[:, -1]) ** 2)
         reconstruct = torch.cat([obses[:32, -1], reconstruct[:32], reconstruct_old[:32]], dim=0)
         grid = vutils.make_grid(reconstruct, nrow=3, pad_value=0.2)[:, 2:-2, 2:-2]
         losses['visualisation'] = wandb.Image(grid)
