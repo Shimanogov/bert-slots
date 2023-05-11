@@ -111,6 +111,8 @@ class SlotBert(nn.Module):
         mod_actions = self.modality_mask_emb(torch.ones(new_ttokens.shape[:-1],
                                                         dtype=torch.long, device=self.device) * 2)
         new_ttokens = new_ttokens - actions_time - mod_actions
+        if self.detach:
+            new_ttokens = new_ttokens.detach()
         new_actions = self.act_ff(new_ttokens)
         loss = self.act_loss(new_actions.flatten(0, 1), actions.flatten(0, 1))
         # END OF TD
@@ -216,8 +218,8 @@ class SlotBert(nn.Module):
         reconstruct = self.slate.reconstruct_slots(new_slots_deemb)
         reconstruct_old = self.slate.reconstruct_slots(old_slots_deemb)
         losses['mse images'] = torch.mean((reconstruct - reconstruct_old) ** 2)
-        reconstruct = torch.cat([reconstruct[:32], reconstruct_old[:32]], dim=0)
-        grid = vutils.make_grid(reconstruct, nrow=2, pad_value=0.2)[:, 2:-2, 2:-2]
+        reconstruct = torch.cat([obses[:32, -1], reconstruct[:32], reconstruct_old[:32]], dim=0)
+        grid = vutils.make_grid(reconstruct, nrow=3, pad_value=0.2)[:, 2:-2, 2:-2]
         losses['visualisation'] = wandb.Image(grid)
         # TODO: add logging of ground truth
 
