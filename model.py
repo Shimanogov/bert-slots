@@ -100,9 +100,9 @@ class SlotBert(nn.Module):
         masked_tokens = self.sep_to_seq(m_obses, m_actions, m_rewards)
         masks = 1 - self.concat_all(bm_o, bm_a, bm_r)  # mask = 0 should be included in loss
         new_tokens = self.pass_to_bert(masked_tokens)
+        bert_mse = torch.mean((new_tokens - masked_tokens) ** 2 * masks.unsqueeze(-1))
         if self.detach:
             new_tokens = new_tokens.detach()
-        bert_mse = torch.mean((new_tokens - masked_tokens) ** 2 * masks.unsqueeze(-1))
 
         # TODO: check loss is correct
         new_ttokens = new_tokens[:,self.slate.num_slots::self.slate.num_slots+2]
