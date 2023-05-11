@@ -16,6 +16,7 @@ def get_time_emb(dim, time):
     emb = torch.concatenate([emb_sin, emb_cos], dim=1)
     return emb
 
+
 class SlotBert(nn.Module):
     def __init__(self, slate, num_actions, time,
                  n_heads=4, dim_feedforward=512, num_layers=4, detach=False,
@@ -105,7 +106,7 @@ class SlotBert(nn.Module):
             new_tokens = new_tokens.detach()
 
         # TODO: check loss is correct
-        new_ttokens = new_tokens[:,self.slate.num_slots::self.slate.num_slots+2]
+        new_ttokens = new_tokens[:, self.slate.num_slots::self.slate.num_slots + 2]
         actions_time = self.time_emb.unsqueeze(0).to(self.device)
         mod_actions = self.modality_mask_emb(torch.ones(new_ttokens.shape[:-1],
                                                         dtype=torch.long, device=self.device) * 2)
@@ -153,8 +154,11 @@ class SlotBert(nn.Module):
 
         new_action_emb = new_ttokens[:, -2]
         old_action_emb = old_ttokens[:, -2]
-        losses['mse'] = torch.mean((new_action_emb - old_action_emb)**2)
-        losses['meaningful mse'] = torch.mean(((new_action_emb - old_action_emb)[meaningful])**2)
+        losses['mse'] = torch.mean((new_action_emb - old_action_emb) ** 2)
+        losses['meaningful mse'] = torch.mean(((new_action_emb - old_action_emb)[meaningful]) ** 2)
+
+        distance = torch.norm(new_action_emb.unsqueeze(1) - self.action_emb.weight.data.unsqueeze(0), dim=2)
+        nearest = torch.argmin(distance, dim=1)
 
         new_action = new_actions[:, -2]
         old_action = actions[:, -2]
@@ -163,9 +167,14 @@ class SlotBert(nn.Module):
                                                           old_action[meaningful])
 
         new_action_max = torch.max(new_action, dim=1).indices
-        losses['accuracy'] = torch.sum(torch.eq(old_action, new_action_max))/(old_action.shape[0])
+        losses['accuracy'] = torch.sum(torch.eq(old_action, new_action_max)) / (old_action.shape[0])
         losses['meanigful accuracy'] = torch.sum(torch.eq(old_action[meaningful],
-                                                          new_action_max[meaningful]))/(old_action[meaningful].shape[0])
+                                                          new_action_max[meaningful])) / (
+                                       old_action[meaningful].shape[0])
+        losses['nearest accuracy'] = torch.sum(torch.eq(old_action, nearest)) / (old_action.shape[0])
+        losses['nearest meanigful accuracy'] = torch.sum(torch.eq(old_action[meaningful],
+                                                                  nearest[meaningful])) / (
+                                                   old_action[meaningful].shape[0])
 
         return losses
 
