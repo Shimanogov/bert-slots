@@ -64,6 +64,7 @@ if __name__ == '__main__':
         collector = FasterCollector(policy)
     else:
         collector = Collector(policy)
+    inference_collector = Collector(RandomPolicy(env))
     slate = FixSLATE(image_size=config['image_size'], num_slots=config['num_slots'], slot_size=config['slot_size'],
                      vocab_size=config['vocab_size'], d_model=config['d_model'], dropout=config['dropout'],
                      num_iterations=config['num_iterations'], mlp_hidden_size=config['mlp_hidden_size'],
@@ -114,8 +115,8 @@ if __name__ == '__main__':
 
         if i % config['inference_every'] == 0:
             start_time = datetime.now()
-            obses, actions, rewards = collector.collect_batch(target_len=config['time'],
-                                                              batch_size=config['batch_size'])
+            obses, actions, rewards = inference_collector.collect_batch(target_len=config['time'],
+                                                                        batch_size=config['batch_size'])
             collected_time = datetime.now()
             obses, actions, rewards = to_torch(obses, actions, rewards, device='cuda')
             inv_results = model.inv_din_inference(obses, actions, rewards)
@@ -123,9 +124,9 @@ if __name__ == '__main__':
             end_time = datetime.now()
 
             for k, v in inv_results.items():
-                wandb_log['INV_DIN/'+k] = v
+                wandb_log['INV_DIN/' + k] = v
             for k, v in forw_results.items():
-                wandb_log['FORW_DIN/'+k] = v
+                wandb_log['FORW_DIN/' + k] = v
 
             wandb_log['TIME/collecting_inference_batch'] = (collected_time - start_time).seconds
             wandb_log['TIME/inference_model'] = (end_time - collected_time).seconds
