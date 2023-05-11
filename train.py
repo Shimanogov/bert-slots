@@ -3,7 +3,7 @@ from datetime import datetime
 import torch
 import wandb
 
-from data_collector import Collector, to_torch
+from data_collector import Collector, to_torch, FasterCollector
 from envs import Push
 from model import SlotBert
 from policy import RandomPolicy
@@ -41,19 +41,23 @@ config = {
     'n_bert_heads': 4,
     'dim_feedforward': 256,
     'num_layers': 4,
-    'detach': False,
+    'detach': True,
     # TRAINING PARAMS
     'batch_size': 128,
     'num_epochs': 1000 * 100 + 1,
     'inference_every': 100,
-    'lr_period': 100
+    'lr_period': 100,
+    'faster': True
 }
 
 if __name__ == '__main__':
     wandb.init(config=config, project='SlotBert')
     env = Push(return_state=False)
     policy = RandomPolicy(env)
-    collector = Collector(policy)
+    if config['faster']:
+        collector = FasterCollector(policy)
+    else:
+        collector = Collector(policy)
     slate = FixSLATE(image_size=config['image_size'], num_slots=config['num_slots'], slot_size=config['slot_size'],
                      vocab_size=config['vocab_size'], d_model=config['d_model'], dropout=config['dropout'],
                      num_iterations=config['num_iterations'], mlp_hidden_size=config['mlp_hidden_size'],

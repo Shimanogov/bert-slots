@@ -52,3 +52,23 @@ class Collector:
         return (np.stack(batch_obses),
                 np.stack(batch_actions),
                 np.stack(batch_rewards))
+
+
+class FasterCollector(Collector):
+    def collect_batch(self, batch_size=256, target_len=8):
+        batch_obses = []
+        batch_actions = []
+        batch_rewards = []
+        while len(batch_actions) < batch_size:
+            obses, actions, rewards = self.collect_trajectory()
+            if len(actions) < target_len:
+                continue
+            for i in range(0, len(actions) - target_len):
+                start = i
+                end = start + target_len
+                batch_obses.append(obses[start:end])
+                batch_actions.append(actions[start:end])
+                batch_rewards.append(rewards[start:end])
+        return (np.stack(batch_obses)[:batch_size],
+                np.stack(batch_actions)[:batch_size],
+                np.stack(batch_rewards)[:batch_size])
