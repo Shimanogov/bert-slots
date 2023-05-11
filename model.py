@@ -29,9 +29,7 @@ class SlotBert(nn.Module):
         self.time_emb = get_time_emb(slate.slot_size, time)
         bert_layer = nn.TransformerEncoderLayer(slate.slot_size, n_heads, dim_feedforward, batch_first=True)
         self.bert = nn.TransformerEncoder(bert_layer, num_layers)
-        self.act_ff = nn.Sequential(nn.Linear(slate.slot_size * (slate.num_slots + 2), slate.slot_size),
-                                    nn.GELU(),
-                                    nn.Linear(slate.slot_size, slate.slot_size),
+        self.act_ff = nn.Sequential(nn.Linear(slate.slot_size, slate.slot_size),
                                     nn.GELU(),
                                     nn.Linear(slate.slot_size, num_actions),
                                     )
@@ -107,10 +105,9 @@ class SlotBert(nn.Module):
         bert_mse = torch.mean((new_tokens - masked_tokens) ** 2 * masks.unsqueeze(-1))
 
         # TODO: check loss is correct
-        new_ttokens = new_tokens.unflatten(1, (-1, self.slate.num_slots + 2))
-        new_actions = new_ttokens.flatten(-2)
-        new_actions = self.act_ff(new_actions)
-        loss = self.act_loss(new_actions.permute((0, 2, 1)), actions)
+        new_ttokens = new_tokens[:,self.slate.num_slots::self.slate.num_slots+2]
+        new_actions = self.act_ff(new_ttokens)
+        loss = self.act_loss(new_actions.flatten(0, 1), actions.flatten(0, 1))
         # END OF TD
 
         return new_tokens, (mse, ce, bert_mse, loss)
@@ -141,24 +138,25 @@ class SlotBert(nn.Module):
         )
         masked_tokens = self.sep_to_seq(m_obses, m_actions, m_rewards)
         new_tokens = self.pass_to_bert(masked_tokens)
-        new_tokens = new_tokens.unflatten(1, (-1, self.slate.num_slots + 2))
-        old_tokens = masked_tokens.unflatten(1, (-1, self.slate.num_slots + 2))
-        new_actions = new_tokens.flatten(-2)
-        new_actions = self.act_ff(new_actions)
+        new_ttokens = new_tokens[:, self.slate.num_slots::self.slate.num_slots + 2]
+        old_ttokens = masked_tokens[:, self.slate.num_slots::self.slate.num_slots + 2]
+        new_actions = self.act_ff(new_ttokens)
 
-        new_action_emb = new_tokens[:, -2, -2]
-        old_action_emb = old_tokens[:, -2, -2]
+        new_action_emb = new_ttokens[:, -2]
+        old_action_emb = old_ttokens[:, -2]
         losses['mse'] = torch.mean((new_action_emb - old_action_emb)**2)
         losses['meaningful mse'] = torch.mean(((new_action_emb - old_action_emb)[meaningful])**2)
 
         new_action = new_actions[:, -2]
         old_action = actions[:, -2]
         losses['cross entropy'] = self.act_loss(new_action, old_action)
-        losses['meanigful cross entropy'] = self.act_loss(new_action[meaningful], old_action[meaningful])
+        losses['meanigful cross entropy'] = self.act_loss(new_action[meaningful],
+                                                          old_action[meaningful])
 
         new_action_max = torch.max(new_action, dim=1).indices
         losses['accuracy'] = torch.sum(torch.eq(old_action, new_action_max))/(old_action.shape[0])
-        losses['meanigful accuracy'] = torch.sum(torch.eq(old_action[meaningful], new_action_max[meaningful]))/(old_action[meaningful].shape[0])
+        losses['meanigful accuracy'] = torch.sum(torch.eq(old_action[meaningful],
+                                                          new_action_max[meaningful]))/(old_action[meaningful].shape[0])
 
         return losses
 
