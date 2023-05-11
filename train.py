@@ -6,7 +6,7 @@ import wandb
 from data_collector import Collector, to_torch, FasterCollector
 from envs import Push
 from model import SlotBert
-from policy import RandomPolicy
+from policy import RandomPolicy, AdHocPolicy
 from slots import FixSLATE
 
 
@@ -47,13 +47,19 @@ config = {
     'num_epochs': 1000 * 100 + 1,
     'inference_every': 100,
     'lr_period': 100,
-    'faster': True
+    'faster': True,
+    'policy': 'adhoc'
 }
 
 if __name__ == '__main__':
     wandb.init(config=config, project='SlotBert')
     env = Push(return_state=False)
-    policy = RandomPolicy(env)
+    if config['policy'] == 'random':
+        policy = RandomPolicy(env)
+    elif config['policy'] == 'adhoc':
+        policy = AdHocPolicy(env)
+    else:
+        raise NotImplementedError
     if config['faster']:
         collector = FasterCollector(policy)
     else:
